@@ -1,0 +1,713 @@
+---
+title: "Analyze the relationship between direct marketing campaigns and subcribing term deposit"
+subtitle: 'ISE 535 Final Project for Group 11'
+author:  
+  - name: Boyue Wang
+  - name: Yu Yun Tsai
+  - name: Yuqing Shi
+  - name: Zizhen Qin
+date:  "Due 12/09/2021"
+tags: [nothing, nothingness]
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    collapsed:  false
+    theme: journal
+    df_print: kable
+    fig_caption:  true
+    code_folding:  hide
+  pdf_document: default
+---
+
+# Project summary and objective
+
+## Research Question
+Our interest lies in direct marketing campaigns. We want to know the effectiveness of the direct marketing campaigns, and whether a customer would subscribe to a term deposit through a direct marketing campaign. Also, we want to predict after how many marketing campaigns, the customer would subscribe a term deposit. Moreover, we want to learn whether other attributes like, job, age, balance and loan would affect the result of subscribing a marketing campaigns.
+
+## Project Objective
+Build models to predict whether a customer would subscribe a term deposit or not. After, we build the model and find a pattern for customer who have more possibilty to subcribe a term deposit. The bank can put more human resources on the target customers instead of making worthless effort. Help the bank to increase the marketing campaigns successful rate.
+
+# Dataset summmary
+The data is related to direct marketing campaigns (phone calls) of a Portuguese banking institution. It consists of 41188 observations with 16 attributes including bank clients data, data related with the last contact of the current campaign, social and economic context attributes and other attributes. 
+
+## Input variables
+### 7 Numeric variables:
+age: the customers age <br>
+balance: the balance of the customers <br>
+duration: last contact duration, in seconds. <br>
+campaign: number of contacts performed during this campaign and for this client. <br>
+pdays: number of days that passed by after the client was last contacted from a previous campaign(-1 means client was not previously contacted) <br>
+previous: number of contacts performed before this campaign and for this client <br>
+day: last contact day of the month <br>
+
+### 9 Categorical variables:
+job : type of job <br>
+marital: marital status  <br>
+education: education level <br>
+default: has credit in default? <br>
+housing: has a housing loan?  <br>
+loan: has a personal loan?  <br>
+contact: contact communication type  <br>
+month: last contact month of year <br>
+poutcome: outcome of the previous marketing campaign <br>
+
+### Output variables
+y - has the client subscribed to a term deposit? (binary: 'yes','no')
+
+#  Univariate Analysis summary tables of measures and categories
+```{r}
+library(tidyverse)
+library(gridExtra)
+summarize_numeric = function(dataset) {
+  
+  dataset = select_if(dataset, is.numeric)
+  summary.table = data.frame(Attribute = names(dataset))
+  
+  summary.table = summary.table %>% 
+    mutate('Missing Values' = apply(dataset, 2, function (x) sum(is.na(x))),
+           'Unique Values' = apply(dataset, 2, function (x) length(unique(x))),
+           'Mean' = colMeans(dataset, na.rm = TRUE),
+           'Min' = apply(dataset, 2, function (x) min(x, na.rm = TRUE)),
+           'Max' = apply(dataset, 2, function (x) max(x, na.rm = TRUE)),
+           'SD' = apply(dataset, 2, function (x) sd(x, na.rm = TRUE))
+    )
+  summary.table
+}
+
+summarize_character = function(dataset) {
+  
+  dataset = select_if(dataset, is.character)
+  summary.table = data.frame(Attribute = names(dataset))
+  
+  summary.table = summary.table %>% 
+    mutate('Missing Values' = apply(dataset, 2, function (x) sum(is.na(x))),
+           'Unique Values' = apply(dataset, 2, function (x) length(unique(x))),
+    )
+  summary.table
+}
+```
+Give a summary view of the data.
+```{r}
+bank = read_csv('bank-full.csv',show_col_types = FALSE)
+sc_bank <- summarize_character(bank)
+sn_bank<- summarize_numeric(bank) %>% mutate_if(is.numeric, round, digits = 2)
+
+library(knitr)
+
+knitr::kable(sn_bank,"simple")
+knitr::kable(sc_bank,"simple")
+```
+
+```{r}
+bank = bank %>% mutate(job = as.factor(job),
+                       marital = as.factor(marital),
+                       education= as.factor(education),
+                       default = as.factor(default), 
+                       housing = as.factor(housing), 
+                       loan = as.factor(loan),
+                       contact = as.factor(contact),
+                       month = as.factor(month),
+                       poutcome = as.factor(poutcome),
+                       y = as.factor(y))
+```
+
+```{r}
+colnames(bank %>% select_if(is.factor))
+colnames(bank %>% select_if(is.numeric))
+```
+There are 10 attributes in the categories attributes which are job, marital, education , default, housing, loan, contact, month, poutcome, and y. There are 7 attributes in measures which are age, balance, day, duration, campaign, pdays, and previous. Moreover, from the summary table, we find that the data is quite clean. There is no missing values in all the attributes. All the attributes have more than 2 unique values which means, we do not need to delete any attribute at this point. 
+
+# Univariate analysis visualizations
+
+##  Numeric Attributes
+First, we draw the numeric attributes distributions, and we find that the value of balance, pdays, and previous are quite concentrated. Most of the value of valance are around 0.The pdays values are concentrated at -1 and the previous values are concentrated at 0. The previous attributes means number of contacts performed before this campaign and for this client and pdays means number of days that passed by after the client was last contacted from a previous campaign and -1 means this customer was not previous contacted. In this way, the previous and pdays are high correlated and the customer which previous is 0 value is same as the customers which have pdays value -1 which means these customers was not previous contacted. In this way, we can seperate the data into contacted before and was not contacted before.We can have a better distribution plot of pdays and previous with the customers were contacted before. 
+
+```{r, fig.width=15, fig.height=20}
+p1 = ggplot(bank) + geom_bar(aes(x = age))
+p2 = ggplot(bank) + geom_bar(aes(x = balance), width = 500)
+p3 = ggplot(bank) + geom_bar(aes(x = day))
+p4 = ggplot(bank) + geom_bar(aes(x = duration))
+p5 = ggplot(bank) + geom_bar(aes(x = campaign))
+p6 = ggplot(bank) + geom_bar(aes(x = pdays))
+p7 = ggplot(bank) + geom_bar(aes(x = previous))
+
+grid.arrange(p1, p2, p3, p4, p5, p6, p7, nrow=4, top = "Numeric Attributes for all the customers")
+```
+```{r}
+bank_contacted <- bank[bank$previous!=0,]
+```
+Now we draw the distribution plot for contacted customers.
+```{r, fig.width=15, fig.height=20}
+p1 = ggplot(bank_contacted) + geom_bar(aes(x = age))
+p2 = ggplot(bank_contacted) + geom_bar(aes(x = balance))
+p3 = ggplot(bank_contacted) + geom_bar(aes(x = day))
+p4 = ggplot(bank_contacted) + geom_bar(aes(x = duration))
+p5 = ggplot(bank_contacted) + geom_bar(aes(x = campaign))
+p6 = ggplot(bank_contacted) + geom_bar(aes(x = pdays))
+p7 = ggplot(bank_contacted) + geom_bar(aes(x = previous))
+
+grid.arrange(p1, p2, p3, p4, p5, p6, p7, nrow=4, top = "Numeric Attributes for contacted customers")
+```
+
+
+##  Categorical Attributes
+After we drawed the categorical distrubutions we found that there are significant numbers of customers are blue-collar, management and technician. Most cusromers did not have credit. Moreover, most customers are contacted through cellular. 
+```{r, fig.width=15,fig.height=15}
+p8 = ggplot(bank) + geom_bar(aes(x = job)) + theme(axis.text.x = element_text(angle=20, hjust = 1, size=8))
+p9 = ggplot(bank) + geom_bar(aes(x = marital))
+p10 = ggplot(bank) + geom_bar(aes(x = education))
+p11 = ggplot(bank) + geom_bar(aes(x = default))
+p12 = ggplot(bank) + geom_bar(aes(x = housing))
+p13 = ggplot(bank) + geom_bar(aes(x = loan))
+p14 = ggplot(bank) + geom_bar(aes(x = contact))
+p15 = ggplot(bank) + geom_bar(aes(x = month))
+p16 = ggplot(bank) + geom_bar(aes(x = poutcome))
+p17 = ggplot(bank) + geom_bar(aes(x = y))
+
+grid.arrange(p8, p9, p10, p11, p12, p13, p14, p15, p16, p17, nrow=5, top = "Categorical Attributes")
+```
+
+# Correlation matrix
+From the Correlation matrix we found that the correlation between pdays and previous is quite high. And for the rest of the attributes the correlations are quiet low which is good. 
+```{r}
+library(ggcorrplot)
+fullCorrMatrix = round(cor(bank %>% select_if(is.numeric)), 2)
+ggcorrplot(fullCorrMatrix, type = "lower", outline.col = "white",lab = TRUE)
+```
+
+#  Bivariate Analysis
+
+##  Measure/Measure
+No linear relationship among most numeric attributes. But we can find the tendency that when the 'balance' becomes higher, the 'duration', 'campaign' and 'previous'  are more likely to be lower. and it also appears in 'duration' and 'pdays'.
+```{r}
+library(gridExtra)
+library(ggcorrplot)
+
+bank <- filter(bank, duration > 0 & pdays < 999)
+
+#balance
+gg8 = ggplot(bank) + geom_point(aes(x=`balance`, y = `duration`))
+gg9 = ggplot(bank) + geom_point(aes(x=`balance`, y = `campaign`))
+gg11 = ggplot(bank) + geom_point(aes(x=`balance`, y = `previous`))
+
+grid.arrange( gg8, gg9,  gg11,nrow=3)
+
+#day
+gg12 = ggplot(bank) + geom_point(aes(x=`day`, y = `duration`))
+gg14 = ggplot(bank) + geom_point(aes(x=`day`, y = `pdays`))
+
+grid.arrange(gg12, gg14, nrow=2)
+
+#duration
+gg17 = ggplot(bank) + geom_point(aes(x=`duration`, y = `pdays`))
+
+grid.arrange( gg17)
+
+#campaign
+gg19 = ggplot(bank) + geom_point(aes(x=`campaign`, y = `pdays`))
+
+grid.arrange(gg19)
+```
+
+## Category/ Category
+Last contact month of year is correlated to the client’s job.
+Job management accounts for the large proportions in each month.
+Job is impacted by the level of the education.
+### job by Category
+```{r}
+g3 = ggplot(bank) + geom_bar(aes(x=education, fill = job), position = "fill") + labs(y = "Percent")
+g8 = ggplot(bank) + geom_bar(aes(x=month, fill = job), position = "fill") + labs(y = "Percent")
+
+grid.arrange(g3, g8,  nrow=2, top = "job by Category")
+
+```
+### education by Category
+```{r}
+g1 = ggplot(bank) + geom_bar(aes(x=job, fill =education), position = "fill") + labs(y = "Percent")
+
+grid.arrange(g1, nrow=1, top = "education by Category")
+```
+No apparent relationship or unexpected observation between other categories for the category distribution.
+
+## Category/ Measure
+While looking at measure distribution by different category values, nothing too surprising or unexpected observation for this dataset. 
+
+### pdays by category
+When the client outcome of previous marketing campaign is success, the number of days that passed by after the client was last contacted tend to be smaller than failure and other clients.
+```{r}
+cm18 = ggplot(bank) + geom_boxplot(aes(x=poutcome, y = pdays)) + theme(axis.title.y = element_blank())
+
+grid.arrange(cm18, nrow=1, top = "age by Category")
+```
+
+### age by category
+Some correlation between age and contact method, marital status.
+```{r}
+cm51 = ggplot(bank) + geom_boxplot(aes(x=marital, y = age)) + theme(axis.title.y = element_blank())
+cm56 = ggplot(bank) + geom_boxplot(aes(x=contact, y = age)) + theme(axis.title.y = element_blank())
+grid.arrange(cm51,cm56, nrow=1, top = "pdays by Category")
+```
+
+# Modeling
+
+## Random Forest
+```{r}
+# splits 70% of the data selected randomly into training set and the remaining 30% sample into test data set.
+train_sub <- sample(nrow(bank),0.7*nrow(bank))
+train_bank <-bank[train_sub,] 
+test_bank <-bank[-train_sub,]
+#pairs(bank)
+
+library(randomForest)
+
+#find the best 'mtry'(Number of variables available for splitting at each tree node) :
+rf_bank_train1<-randomForest(y~.,data=train_bank,importance=TRUE, mtry=2, na.action = na.pass)
+rf_bank_train1
+rf_bank_train2<-randomForest(y~.,data=train_bank,importance=TRUE, mtry=3, na.action = na.pass)
+rf_bank_train2
+rf_bank_train3<-randomForest(y~.,data=train_bank,importance=TRUE, mtry=4, na.action = na.pass)
+rf_bank_train3
+```
+From the result, we can see when mtry = 4, we could find the minimum OOB estimate of error rate is 9.13%. 
+```{r}
+#plot the number of trees
+plot(rf_bank_train3)
+
+#the importance of variables 
+rf_bank_train3$importance
+#plot the importance
+varImpPlot(rf_bank_train3, main = "variable importance")
+
+```
+```{r}
+library(caret)
+library(randomForest)
+#Predicting in test data set
+Predict_rf <- predict(rf_bank_train3, newdata=test_bank, type = "class")
+
+rf_cf <- caret::confusionMatrix(as.factor(Predict_rf),as.factor(test_bank$y) )
+rf_cf
+```
+
+```{r}
+#boosting
+set.seed(1)
+library(gbm)
+library(survival)
+train_bank$y = ifelse(train_bank$y == "yes",1,0)
+bank_gb = gbm(y~.,distribution = "bernoulli",data = train_bank,n.trees = 500,interaction.depth = 4,cv.folds = 3)
+summary(bank_gb)
+
+#confusion matrix
+set.seed(1)
+Predict_rf <- predict(rf_bank_train3, newdata=test_bank)
+yhat_boost =predict(bank_gb, newdata = test_bank, n.trees=500)
+boost_err =table(pred =Predict_rf, truth = test_bank$y) 
+colnames(boost_err) <- c("No","Yes")
+
+```
+
+## Decision Tree
+```{r}
+## 70% of the sample size
+smp_size <- floor(0.7 * nrow(bank))
+
+## set the seed to make your partition reproducible
+set.seed(123)
+train_ind <- sample(seq_len(nrow(bank)), size = smp_size)
+
+train <- bank[train_ind, ]
+test <- bank[-train_ind, ]
+```
+```{r}
+library(rpart)
+library(rpart.plot)
+ct <- rpart.control(xval=10, minsplit=20, cp=0.01)  
+cfit <- rpart(y~.,
+              data=train, method="class", control=ct,
+              parms=list(split="gini")
+              )
+rpart.plot(cfit, main="Decision Tree")
+
+library(tree)
+summary(tree(y~., data=train, method = "class"))
+```
+
+```{r}
+p <- predict(cfit, test ,type="class")
+table(p,  test$y)
+```
+## Logistic Regression
+```{r}
+# splits 70% of the data selected randomly into training set and the remaining 30% sample into test data set.
+dt = sort(sample(nrow(bank), nrow(bank)*.7))
+train<-bank[dt,]
+test<-bank[-dt,]
+mylogit <- glm(y ~., data = train, family = "binomial")
+summary(mylogit)
+```
+
+```{r}
+library(caret)
+glm.probs <- predict(mylogit,test,type = "response")
+glm.pred <- ifelse(glm.probs > 0.5, "yes", "no")
+glm.pred <- as_factor(glm.pred)
+confusionMatrix(glm.pred,test$y)
+```
+
+```{r}
+library(ROCR)
+pr <- prediction(glm.probs, test$y)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+
+auc <- as.numeric(performance(pr, "auc")@y.values)
+auc
+plot(prf,
+     lwd = 3, colorize = TRUE,
+     text.adj = c(-0.2, 1.7),
+     main = 'ROC Curve')
+     mtext(paste('auc : ', round(auc, 5)))
+     abline(0, 1, col = "red", lty = 2)
+```
+
+```{r}
+glm.pred2 <- ifelse(glm.probs > 0.09 , "yes", "no")
+glm.pred2 <- as_factor(glm.pred2)
+confusionMatrix(glm.pred2,test$y)
+```
+## Summary of modeling results and conclusions
+For random forest, we use a loop to find the best 'mtry' (Number of variables available for splitting at each tree node), which is 4, with the lowest out of bag estimate of error rate: 9.13%. We find that duration is the most important factor. The longer contact duration lasts, the higher probability that the client would subscribe the term deposit.
+Month and day are also important factors. The model test accuracy is 90.92%, which seems a good classification model for the prediction. The Kappa is 0.501, which shows good consistency. Then, we use gradient boosting to display the relative influence plot and the relative influence statistics. From the plot, we can also conclude that duration, month and poutcome are three most important variables among all the predictors.
+
+For decision tree, duration is also the most important factor. If the duration is greater than 830 then the customer would have a higher possibility to subscribe the term deposit. More over the poutcome is also an important factor, if the contact duration is not long enough, but the customer has subscribed a term deposit before. The customer would have a high possibility to subscribe a term deposit in this campaign.
+
+For the part of Logistic Regression, we first randomly select 70% of the data into training dataset and put the remaining 30% of the data into testing dataset.Secondly, we built a logistic model by using glm() function. By looking at the p-value in the summary, we found duration, month, day, higher education and campaigns, these are the attributes that highly significant in this model. On the other hand, attributes like age, pdays and previous are not statistically significant at level 0.05. After we build the model, we first make the prediction at threshold equal to 0.5, which will predict positive if the probability is bigger than the threshold. As we can see in the confusion matrix, the accuracy is about 90 percent. So the model actually made a very good prediction.However, while we made the ROC curve, we found the optimal threshold is 0.09 in the curve. We further create a second prediction, but the accuracy is lower to about 80 percent. So that’s kind of an interesting result.
+Since it is logistic model, we can customize the threshold when facing different problems. There always will be a tradeoff between true positive and true negative while we optimize that. Comparing these two matrices, we can observe that when true positives decreases, the true negative increases. Since we aim to find out the effectiveness of market campaigns and target customers, we want to maximize the true negative, which is the customer truly say yes. So we choose 0.09 as our threshold.
+
+All our models have high predictive power as indicated by duration which is the last contact duration with the costumers.We can also conclude and suggest that company to focus on their previous customer who have subscribed a term deposit in the previous campaign. Ideal target customer is in the mid-age with higher education. We also recommend keeping the contact duration as long as possible.From the logistic regression, we find out that higher education, longer contact duration seem to be predictive and positively correlated with the subscription yes. And 0.09 is a ideal cut-off point for this business problem.From the random forest and boosting model, we can see when the outcome of the previous marketing  campaign is successful, the  last contact month of year gets closer and the duration lasts longer, the client is more likely to subscribe the term deposit.Our decision tree models suggests that if the contact duration is higher than 830 seconds, then there will be a higher possibility that the customer would subscribe the term deposit. In the end, We decided to use the logistic regression model, since the predict result is the best and will help the company to find more true positive customer instead of just high accuracy rate. 
+
+# Full EDA
+
+##  Univariate Analysis
+
+###  Numeric Attributes
+```{r, fig.width=15, fig.height=20}
+p1 = ggplot(bank) + geom_bar(aes(x = age))
+p2 = ggplot(bank) + geom_bar(aes(x = balance), width = 500)
+p3 = ggplot(bank) + geom_bar(aes(x = day))
+p4 = ggplot(bank) + geom_bar(aes(x = duration))
+p5 = ggplot(bank) + geom_bar(aes(x = campaign))
+p6 = ggplot(bank) + geom_bar(aes(x = pdays))
+p7 = ggplot(bank) + geom_bar(aes(x = previous))
+
+grid.arrange(p1, p2, p3, p4, p5, p6, p7, nrow=4, top = "Numeric Attributes for all the customers")
+```
+```{r}
+bank_contacted <- bank[bank$previous!=0,]
+```
+Now we draw the distribution plot for contacted customers.
+```{r, fig.width=15, fig.height=20}
+p1 = ggplot(bank_contacted) + geom_bar(aes(x = age))
+p2 = ggplot(bank_contacted) + geom_bar(aes(x = balance))
+p3 = ggplot(bank_contacted) + geom_bar(aes(x = day))
+p4 = ggplot(bank_contacted) + geom_bar(aes(x = duration))
+p5 = ggplot(bank_contacted) + geom_bar(aes(x = campaign))
+p6 = ggplot(bank_contacted) + geom_bar(aes(x = pdays))
+p7 = ggplot(bank_contacted) + geom_bar(aes(x = previous))
+
+grid.arrange(p1, p2, p3, p4, p5, p6, p7, nrow=4, top = "Numeric Attributes for contacted customers")
+```
+
+
+###  Categorical Attributes
+After we drawed the categorical distrubutions we found that there are significant numbers of customers are blue-collar, management and technician. Most cusromers did not have credit. Moreover, most customers are contacted through cellular. 
+```{r, fig.width=15,fig.height=15}
+p8 = ggplot(bank) + geom_bar(aes(x = job)) + theme(axis.text.x = element_text(angle=20, hjust = 1, size=8))
+p9 = ggplot(bank) + geom_bar(aes(x = marital))
+p10 = ggplot(bank) + geom_bar(aes(x = education))
+p11 = ggplot(bank) + geom_bar(aes(x = default))
+p12 = ggplot(bank) + geom_bar(aes(x = housing))
+p13 = ggplot(bank) + geom_bar(aes(x = loan))
+p14 = ggplot(bank) + geom_bar(aes(x = contact))
+p15 = ggplot(bank) + geom_bar(aes(x = month))
+p16 = ggplot(bank) + geom_bar(aes(x = poutcome))
+p17 = ggplot(bank) + geom_bar(aes(x = y))
+
+grid.arrange(p8, p9, p10, p11, p12, p13, p14, p15, p16, p17, nrow=5, top = "Categorical Attributes")
+```
+
+##  Bivariate Analysis
+
+###  Measure/Measure
+```{r}
+library(gridExtra)
+library(ggcorrplot)
+
+bank <- filter(bank, duration > 0 & pdays < 999)
+
+#age
+gg1 = ggplot(bank) + geom_point(aes(x=`age`, y = `balance`))
+gg2 = ggplot(bank) + geom_point(aes(x=`age`, y = `day`))
+gg3 = ggplot(bank) + geom_point(aes(x=`age`, y = `duration`))
+gg4 = ggplot(bank) + geom_point(aes(x=`age`, y = `campaign`))
+gg5 = ggplot(bank) + geom_point(aes(x=`age`, y = `pdays`))
+gg6 = ggplot(bank) + geom_point(aes(x=`age`, y = `previous`))
+
+grid.arrange(gg1, gg2, gg3, gg4,gg5,gg6, nrow=3)
+
+#balance
+gg7 = ggplot(bank) + geom_point(aes(x=`balance`, y = `day`))
+gg8 = ggplot(bank) + geom_point(aes(x=`balance`, y = `duration`))
+gg9 = ggplot(bank) + geom_point(aes(x=`balance`, y = `campaign`))
+gg10 = ggplot(bank) + geom_point(aes(x=`balance`, y = `pdays`))
+gg11 = ggplot(bank) + geom_point(aes(x=`balance`, y = `previous`))
+
+grid.arrange(gg7, gg8, gg9, gg10, gg11,nrow=3)
+
+#day
+gg12 = ggplot(bank) + geom_point(aes(x=`day`, y = `duration`))
+gg13 = ggplot(bank) + geom_point(aes(x=`day`, y = `campaign`))
+gg14 = ggplot(bank) + geom_point(aes(x=`day`, y = `pdays`))
+gg15 = ggplot(bank) + geom_point(aes(x=`day`, y = `previous`))
+
+grid.arrange(gg12, gg13, gg14, gg15, nrow=2)
+
+#duration
+gg16 = ggplot(bank) + geom_point(aes(x=`duration`, y = `campaign`))
+gg17 = ggplot(bank) + geom_point(aes(x=`duration`, y = `pdays`))
+gg18 = ggplot(bank) + geom_point(aes(x=`duration`, y = `previous`))
+
+grid.arrange(gg16, gg17, gg18, nrow=2)
+
+#campaign
+gg19 = ggplot(bank) + geom_point(aes(x=`campaign`, y = `pdays`))
+gg20 = ggplot(bank) + geom_point(aes(x=`campaign`, y = `previous`))
+
+grid.arrange(gg19, gg20,nrow=2)
+
+#pdays
+gg21 = ggplot(bank) + geom_point(aes(x=`pdays`, y = `previous`))
+```
+
+### Category/ Category
+```{r}
+#job by Category
+g1 = ggplot(bank) + geom_bar(aes(x=job, fill = job), position = "fill") + labs(y = "Percent")
+g2 = ggplot(bank) + geom_bar(aes(x=marital, fill = job), position = "fill") + labs(y = "Percent")
+g3 = ggplot(bank) + geom_bar(aes(x=education, fill = job), position = "fill") + labs(y = "Percent")
+g4 = ggplot(bank) + geom_bar(aes(x=default, fill = job), position = "fill") + labs(y = "Percent")
+g5 = ggplot(bank) + geom_bar(aes(x=housing, fill = job), position = "fill") + labs(y = "Percent")
+g6 = ggplot(bank) + geom_bar(aes(x=loan, fill = job), position = "fill") + labs(y = "Percent")
+g7 = ggplot(bank) + geom_bar(aes(x=contact, fill = job), position = "fill") + labs(y = "Percent")
+g8 = ggplot(bank) + geom_bar(aes(x=month, fill = job), position = "fill") + labs(y = "Percent")
+g9 = ggplot(bank) + geom_bar(aes(x=poutcome, fill = job), position = "fill") + labs(y = "Percent")
+
+grid.arrange(g2, g3, g4,  nrow=3, top = "job by Category")
+grid.arrange(g5, g6, g7,  nrow=3, top = "job by Category")
+grid.arrange(g8, g9,  nrow=3, top = "job by Category")
+
+#marital by Category
+g1 = ggplot(bank) + geom_bar(aes(x=job, fill =marital), position = "fill") + labs(y = "Percent")
+g2 = ggplot(bank) + geom_bar(aes(x=marital, fill = marital), position = "fill") + labs(y = "Percent")
+g3 = ggplot(bank) + geom_bar(aes(x=education, fill = marital), position = "fill") + labs(y = "Percent")
+g4 = ggplot(bank) + geom_bar(aes(x=default, fill = marital), position = "fill") + labs(y = "Percent")
+g5 = ggplot(bank) + geom_bar(aes(x=housing, fill = marital), position = "fill") + labs(y = "Percent")
+g6 = ggplot(bank) + geom_bar(aes(x=loan, fill = marital), position = "fill") + labs(y = "Percent")
+g7 = ggplot(bank) + geom_bar(aes(x=contact, fill = marital), position = "fill") + labs(y = "Percent")
+g8 = ggplot(bank) + geom_bar(aes(x=month, fill = marital), position = "fill") + labs(y = "Percent")
+g9 = ggplot(bank) + geom_bar(aes(x=poutcome, fill = marital), position = "fill") + labs(y = "Percent")
+
+grid.arrange(g1, g3, g4,  nrow=3, top = "marital by Category")
+grid.arrange(g5, g6, g7,  nrow=3, top = "marital by Category")
+grid.arrange(g8, g9,  nrow=3, top = "marital by Category")
+
+#education by Category
+g1 = ggplot(bank) + geom_bar(aes(x=job, fill =education), position = "fill") + labs(y = "Percent")
+g2 = ggplot(bank) + geom_bar(aes(x=marital, fill = education), position = "fill") + labs(y = "Percent")
+g3 = ggplot(bank) + geom_bar(aes(x=education, fill = education), position = "fill") + labs(y = "Percent")
+g4 = ggplot(bank) + geom_bar(aes(x=default, fill = education), position = "fill") + labs(y = "Percent")
+g5 = ggplot(bank) + geom_bar(aes(x=housing, fill = education), position = "fill") + labs(y = "Percent")
+g6 = ggplot(bank) + geom_bar(aes(x=loan, fill = education), position = "fill") + labs(y = "Percent")
+g7 = ggplot(bank) + geom_bar(aes(x=contact, fill = education), position = "fill") + labs(y = "Percent")
+g8 = ggplot(bank) + geom_bar(aes(x=month, fill = education), position = "fill") + labs(y = "Percent")
+g9 = ggplot(bank) + geom_bar(aes(x=poutcome, fill = education), position = "fill") + labs(y = "Percent")
+
+grid.arrange(g1, g2, g4,  nrow=3, top = "education by Category")
+grid.arrange(g5, g6, g7,  nrow=3, top = "education by Category")
+grid.arrange(g8, g9,  nrow=3, top = "education by Category")
+
+#default by Category
+g1 = ggplot(bank) + geom_bar(aes(x=job, fill =default), position = "fill") + labs(y = "Percent")
+g2 = ggplot(bank) + geom_bar(aes(x=marital, fill = default), position = "fill") + labs(y = "Percent")
+g3 = ggplot(bank) + geom_bar(aes(x=education, fill = default), position = "fill") + labs(y = "Percent")
+g4 = ggplot(bank) + geom_bar(aes(x=default, fill = default), position = "fill") + labs(y = "Percent")
+g5 = ggplot(bank) + geom_bar(aes(x=housing, fill = default), position = "fill") + labs(y = "Percent")
+g6 = ggplot(bank) + geom_bar(aes(x=loan, fill = default), position = "fill") + labs(y = "Percent")
+g7 = ggplot(bank) + geom_bar(aes(x=contact, fill = default), position = "fill") + labs(y = "Percent")
+g8 = ggplot(bank) + geom_bar(aes(x=month, fill = default), position = "fill") + labs(y = "Percent")
+g9 = ggplot(bank) + geom_bar(aes(x=poutcome, fill = default), position = "fill") + labs(y = "Percent")
+
+grid.arrange(g1, g2, g3,  nrow=3, top = "default by Category")
+grid.arrange(g5, g6, g7,  nrow=3, top = "default by Category")
+grid.arrange(g8, g9,  nrow=3, top = "default by Category")
+
+#housing by Category
+g1 = ggplot(bank) + geom_bar(aes(x=job, fill =housing), position = "fill") + labs(y = "Percent")
+g2 = ggplot(bank) + geom_bar(aes(x=marital, fill = housing), position = "fill") + labs(y = "Percent")
+g3 = ggplot(bank) + geom_bar(aes(x=education, fill = housing), position = "fill") + labs(y = "Percent")
+g4 = ggplot(bank) + geom_bar(aes(x=default, fill = housing), position = "fill") + labs(y = "Percent")
+g5 = ggplot(bank) + geom_bar(aes(x=housing, fill = housing), position = "fill") + labs(y = "Percent")
+g6 = ggplot(bank) + geom_bar(aes(x=loan, fill = housing), position = "fill") + labs(y = "Percent")
+g7 = ggplot(bank) + geom_bar(aes(x=contact, fill = housing), position = "fill") + labs(y = "Percent")
+g8 = ggplot(bank) + geom_bar(aes(x=month, fill = housing), position = "fill") + labs(y = "Percent")
+g9 = ggplot(bank) + geom_bar(aes(x=poutcome, fill = housing), position = "fill") + labs(y = "Percent")
+
+grid.arrange(g1, g2, g3,  nrow=3, top = "housing by Category")
+grid.arrange(g4, g6, g7,  nrow=3, top = "housing by Category")
+grid.arrange(g8, g9,  nrow=3, top = "housing by Category")
+
+#loan by Category
+g1 = ggplot(bank) + geom_bar(aes(x=job, fill =loan), position = "fill") + labs(y = "Percent")
+g2 = ggplot(bank) + geom_bar(aes(x=marital, fill = loan), position = "fill") + labs(y = "Percent")
+g3 = ggplot(bank) + geom_bar(aes(x=education, fill = loan), position = "fill") + labs(y = "Percent")
+g4 = ggplot(bank) + geom_bar(aes(x=default, fill = loan), position = "fill") + labs(y = "Percent")
+g5 = ggplot(bank) + geom_bar(aes(x=housing, fill = loan), position = "fill") + labs(y = "Percent")
+g6 = ggplot(bank) + geom_bar(aes(x=loan, fill = loan), position = "fill") + labs(y = "Percent")
+g7 = ggplot(bank) + geom_bar(aes(x=contact, fill = loan), position = "fill") + labs(y = "Percent")
+g8 = ggplot(bank) + geom_bar(aes(x=month, fill = loan), position = "fill") + labs(y = "Percent")
+g9 = ggplot(bank) + geom_bar(aes(x=poutcome, fill = loan), position = "fill") + labs(y = "Percent")
+
+grid.arrange(g1, g2, g3,  nrow=3, top = "loan by Category")
+grid.arrange(g4, g5, g7,  nrow=3, top = "loan by Category")
+grid.arrange(g8, g9,  nrow=3, top = "loan by Category")
+
+#contact by Category
+g1 = ggplot(bank) + geom_bar(aes(x=job, fill =contact), position = "fill") + labs(y = "Percent")
+g2 = ggplot(bank) + geom_bar(aes(x=marital, fill = contact), position = "fill") + labs(y = "Percent")
+g3 = ggplot(bank) + geom_bar(aes(x=education, fill = contact), position = "fill") + labs(y = "Percent")
+g4 = ggplot(bank) + geom_bar(aes(x=default, fill = contact), position = "fill") + labs(y = "Percent")
+g5 = ggplot(bank) + geom_bar(aes(x=housing, fill = contact), position = "fill") + labs(y = "Percent")
+g6 = ggplot(bank) + geom_bar(aes(x=loan, fill = contact), position = "fill") + labs(y = "Percent")
+g7 = ggplot(bank) + geom_bar(aes(x=contact, fill = contact), position = "fill") + labs(y = "Percent")
+g8 = ggplot(bank) + geom_bar(aes(x=month, fill = contact), position = "fill") + labs(y = "Percent")
+g9 = ggplot(bank) + geom_bar(aes(x=poutcome, fill = contact), position = "fill") + labs(y = "Percent")
+
+grid.arrange(g1, g2, g3,  nrow=3, top = "contact by Category")
+grid.arrange(g4, g5, g6,  nrow=3, top = "contact by Category")
+grid.arrange(g8, g9,  nrow=3, top = "contact by Category")
+
+#month by Category
+g1 = ggplot(bank) + geom_bar(aes(x=job, fill =month), position = "fill") + labs(y = "Percent")
+g2 = ggplot(bank) + geom_bar(aes(x=marital, fill = month), position = "fill") + labs(y = "Percent")
+g3 = ggplot(bank) + geom_bar(aes(x=education, fill = month), position = "fill") + labs(y = "Percent")
+g4 = ggplot(bank) + geom_bar(aes(x=default, fill = month), position = "fill") + labs(y = "Percent")
+g5 = ggplot(bank) + geom_bar(aes(x=housing, fill = month), position = "fill") + labs(y = "Percent")
+g6 = ggplot(bank) + geom_bar(aes(x=loan, fill = month), position = "fill") + labs(y = "Percent")
+g7 = ggplot(bank) + geom_bar(aes(x=contact, fill = month), position = "fill") + labs(y = "Percent")
+g8 = ggplot(bank) + geom_bar(aes(x=month, fill = month), position = "fill") + labs(y = "Percent")
+g9 = ggplot(bank) + geom_bar(aes(x=poutcome, fill = month), position = "fill") + labs(y = "Percent")
+
+grid.arrange(g1, g2, g3,  nrow=3, top = "month by Category")
+grid.arrange(g4, g5, g6,  nrow=3, top = "month by Category")
+grid.arrange(g7, g9,  nrow=3, top = "month by Category")
+
+#poutcome by Category
+g1 = ggplot(bank) + geom_bar(aes(x=job, fill =poutcome), position = "fill") + labs(y = "Percent")
+g2 = ggplot(bank) + geom_bar(aes(x=marital, fill = poutcome), position = "fill") + labs(y = "Percent")
+g3 = ggplot(bank) + geom_bar(aes(x=education, fill = poutcome), position = "fill") + labs(y = "Percent")
+g4 = ggplot(bank) + geom_bar(aes(x=default, fill = poutcome), position = "fill") + labs(y = "Percent")
+g5 = ggplot(bank) + geom_bar(aes(x=housing, fill = poutcome), position = "fill") + labs(y = "Percent")
+g6 = ggplot(bank) + geom_bar(aes(x=loan, fill = poutcome), position = "fill") + labs(y = "Percent")
+g7 = ggplot(bank) + geom_bar(aes(x=contact, fill = poutcome), position = "fill") + labs(y = "Percent")
+g8 = ggplot(bank) + geom_bar(aes(x=month, fill = poutcome), position = "fill") + labs(y = "Percent")
+g9 = ggplot(bank) + geom_bar(aes(x=poutcome, fill = poutcome), position = "fill") + labs(y = "Percent")
+
+grid.arrange(g1, g2, g3,  nrow=3, top = "poutcome by Category")
+grid.arrange(g4, g5, g6,  nrow=3, top = "poutcome by Category")
+grid.arrange(g7, g8,  nrow=3, top = "poutcome by Category")
+```
+
+
+### Category/ Measure
+```{r}
+cm10 = ggplot(bank) + geom_boxplot(aes(x=job, y = age)) + theme(axis.title.y = element_blank())
+cm11 = ggplot(bank) + geom_boxplot(aes(x=marital, y = age)) + theme(axis.title.y = element_blank())
+cm12 = ggplot(bank) + geom_boxplot(aes(x=education, y = age))+ theme(axis.title.y = element_blank())
+cm13 = ggplot(bank) + geom_boxplot(aes(x=default, y = age)) + theme(axis.title.y = element_blank())
+cm14= ggplot(bank) + geom_boxplot(aes(x=housing, y = age)) + theme(axis.title.y = element_blank())
+cm15 = ggplot(bank) + geom_boxplot(aes(x=loan, y = age)) + theme(axis.title.y = element_blank())
+cm16 = ggplot(bank) + geom_boxplot(aes(x=contact, y = age)) + theme(axis.title.y = element_blank())
+cm17 = ggplot(bank) + geom_boxplot(aes(x=month, y = age)) + theme(axis.title.y = element_blank())
+cm18 = ggplot(bank) + geom_boxplot(aes(x=poutcome, y = age)) + theme(axis.title.y = element_blank())
+
+grid.arrange(cm10,cm11,cm12,cm13,cm14,cm15,cm16,cm17,cm18, nrow=3, top = "age by Category")
+
+cm20 = ggplot(bank) + geom_boxplot(aes(x=job, y = balance)) + theme(axis.title.y = element_blank())
+cm21 = ggplot(bank) + geom_boxplot(aes(x=marital, y = balance)) + theme(axis.title.y = element_blank())
+cm22 = ggplot(bank) + geom_boxplot(aes(x=education, y = balance))+ theme(axis.title.y = element_blank())
+cm23 = ggplot(bank) + geom_boxplot(aes(x=default, y = balance)) + theme(axis.title.y = element_blank())
+cm24= ggplot(bank) + geom_boxplot(aes(x=housing, y = balance)) + theme(axis.title.y = element_blank())
+cm25 = ggplot(bank) + geom_boxplot(aes(x=loan, y = balance)) + theme(axis.title.y = element_blank())
+cm26 = ggplot(bank) + geom_boxplot(aes(x=contact, y = balance)) + theme(axis.title.y = element_blank())
+cm27 = ggplot(bank) + geom_boxplot(aes(x=month, y = balance)) + theme(axis.title.y = element_blank())
+cm28 = ggplot(bank) + geom_boxplot(aes(x=poutcome, y = balance)) + theme(axis.title.y = element_blank())
+grid.arrange(cm20,cm21,cm22,cm23,cm24,cm25,cm26,cm27,cm28, nrow=3, top = "balance by Category")
+
+cm30 = ggplot(bank) + geom_boxplot(aes(x=job, y = duration)) + theme(axis.title.y = element_blank())
+cm31 = ggplot(bank) + geom_boxplot(aes(x=marital, y = duration)) + theme(axis.title.y = element_blank())
+cm32 = ggplot(bank) + geom_boxplot(aes(x=education, y = duration))+ theme(axis.title.y = element_blank())
+cm33 = ggplot(bank) + geom_boxplot(aes(x=default, y = duration)) + theme(axis.title.y = element_blank())
+cm34= ggplot(bank) + geom_boxplot(aes(x=housing, y = duration)) + theme(axis.title.y = element_blank())
+cm35 = ggplot(bank) + geom_boxplot(aes(x=loan, y = duration)) + theme(axis.title.y = element_blank())
+cm36 = ggplot(bank) + geom_boxplot(aes(x=contact, y = duration)) + theme(axis.title.y = element_blank())
+cm37 = ggplot(bank) + geom_boxplot(aes(x=month, y = duration)) + theme(axis.title.y = element_blank())
+cm38 = ggplot(bank) + geom_boxplot(aes(x=poutcome, y = duration)) + theme(axis.title.y = element_blank())
+grid.arrange(cm30,cm31,cm32,cm33,cm34,cm35,cm36,cm37,cm38, nrow=3, top = "duration by Category")
+
+cm40 = ggplot(bank) + geom_boxplot(aes(x=job, y = campaign)) + theme(axis.title.y = element_blank())
+cm41 = ggplot(bank) + geom_boxplot(aes(x=marital, y = campaign)) + theme(axis.title.y = element_blank())
+cm42 = ggplot(bank) + geom_boxplot(aes(x=education, y = campaign))+ theme(axis.title.y = element_blank())
+cm43 = ggplot(bank) + geom_boxplot(aes(x=default, y = campaign)) + theme(axis.title.y = element_blank())
+cm44= ggplot(bank) + geom_boxplot(aes(x=housing, y = campaign)) + theme(axis.title.y = element_blank())
+cm45 = ggplot(bank) + geom_boxplot(aes(x=loan, y = campaign)) + theme(axis.title.y = element_blank())
+cm46 = ggplot(bank) + geom_boxplot(aes(x=contact, y = campaign)) + theme(axis.title.y = element_blank())
+cm47 = ggplot(bank) + geom_boxplot(aes(x=month, y = campaign)) + theme(axis.title.y = element_blank())
+cm48 = ggplot(bank) + geom_boxplot(aes(x=poutcome, y = campaign)) + theme(axis.title.y = element_blank())
+grid.arrange(cm40,cm41,cm42,cm43,cm44,cm45,cm46,cm47,cm48, nrow=3, top = "campaign by Category")
+
+cm50 = ggplot(bank) + geom_boxplot(aes(x=job, y = pdays)) + theme(axis.title.y = element_blank())
+cm51 = ggplot(bank) + geom_boxplot(aes(x=marital, y = pdays)) + theme(axis.title.y = element_blank())
+cm52 = ggplot(bank) + geom_boxplot(aes(x=education, y = pdays))+ theme(axis.title.y = element_blank())
+cm53 = ggplot(bank) + geom_boxplot(aes(x=default, y = pdays)) + theme(axis.title.y = element_blank())
+cm54= ggplot(bank) + geom_boxplot(aes(x=housing, y = pdays)) + theme(axis.title.y = element_blank())
+cm55 = ggplot(bank) + geom_boxplot(aes(x=loan, y = pdays)) + theme(axis.title.y = element_blank())
+cm56 = ggplot(bank) + geom_boxplot(aes(x=contact, y = pdays)) + theme(axis.title.y = element_blank())
+cm57 = ggplot(bank) + geom_boxplot(aes(x=month, y = pdays)) + theme(axis.title.y = element_blank())
+cm58 = ggplot(bank) + geom_boxplot(aes(x=poutcome, y = pdays)) + theme(axis.title.y = element_blank())
+grid.arrange(cm50,cm51,cm52,cm53,cm54,cm55,cm56,cm57,cm58, nrow=3, top = "pdays by Category")
+
+cm60 = ggplot(bank) + geom_boxplot(aes(x=job, y = previous)) + theme(axis.title.y = element_blank())
+cm61 = ggplot(bank) + geom_boxplot(aes(x=marital, y = previous)) + theme(axis.title.y = element_blank())
+cm62 = ggplot(bank) + geom_boxplot(aes(x=education, y = previous))+ theme(axis.title.y = element_blank())
+cm63 = ggplot(bank) + geom_boxplot(aes(x=default, y = previous)) + theme(axis.title.y = element_blank())
+cm64= ggplot(bank) + geom_boxplot(aes(x=housing, y = previous)) + theme(axis.title.y = element_blank())
+cm65 = ggplot(bank) + geom_boxplot(aes(x=loan, y = previous)) + theme(axis.title.y = element_blank())
+cm66 = ggplot(bank) + geom_boxplot(aes(x=contact, y = previous)) + theme(axis.title.y = element_blank())
+cm67 = ggplot(bank) + geom_boxplot(aes(x=month, y = previous)) + theme(axis.title.y = element_blank())
+cm68 = ggplot(bank) + geom_boxplot(aes(x=poutcome, y = previous)) + theme(axis.title.y = element_blank())
+grid.arrange(cm60,cm61,cm62,cm63,cm64,cm65,cm66,cm67,cm68, nrow=3, top = "previous by Category")
+
+cm70 = ggplot(bank) + geom_boxplot(aes(x=job, y = day)) + theme(axis.title.y = element_blank())
+cm71 = ggplot(bank) + geom_boxplot(aes(x=marital, y = day)) + theme(axis.title.y = element_blank())
+cm72 = ggplot(bank) + geom_boxplot(aes(x=education, y = day))+ theme(axis.title.y = element_blank())
+cm73 = ggplot(bank) + geom_boxplot(aes(x=default, y = day)) + theme(axis.title.y = element_blank())
+cm74= ggplot(bank) + geom_boxplot(aes(x=housing, y = day)) + theme(axis.title.y = element_blank())
+cm75 = ggplot(bank) + geom_boxplot(aes(x=loan, y = day)) + theme(axis.title.y = element_blank())
+cm76 = ggplot(bank) + geom_boxplot(aes(x=contact, y = day)) + theme(axis.title.y = element_blank())
+cm77 = ggplot(bank) + geom_boxplot(aes(x=month, y = day)) + theme(axis.title.y = element_blank())
+cm78 = ggplot(bank) + geom_boxplot(aes(x=poutcome, y = day)) + theme(axis.title.y = element_blank())
+grid.arrange(cm70,cm71,cm72,cm73,cm74,cm75,cm76,cm77,cm78, nrow=3, top = "day by Category")
+```
